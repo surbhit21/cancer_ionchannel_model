@@ -1,13 +1,10 @@
-
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.integrate import solve_ivp
+from typing import Dict, Tuple
 from Utilities import *
 
 
-    
-
-    # return np.array([dVm, dm, dh, dn, ds, dr, dci], dtype=float)
 
 
 if __name__ == "__main__":
@@ -20,39 +17,35 @@ if __name__ == "__main__":
     n0 = sigmoid_x_inf(Vm0, gate_approx["n"]["Vhalf"], gate_approx["n"]["k"])
     s0 = sigmoid_x_inf(Vm0, gate_approx["s"]["Vhalf"], gate_approx["s"]["k"])
     r0 = sigmoid_x_inf(Vm0, gate_approx["r"]["Vhalf"], gate_approx["r"]["k"])
-    ci0 = 0.002
+    ci0 = 0.0002
     
     cER0 = p.cER_rest
     y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0], dtype=float)
 
+    t_end = 30000  # ms
+    t_span = (0.0, t_end)  # ms (give it time to settle into a limit cycle)
+    t_eval = np.linspace(*t_span, t_end+1)
+    dt = 0.02
 
-    t_span = (0.0, 15000.0)  # ms (give it time to settle into a limit cycle)
-    t_eval = np.linspace(*t_span, 15001)
+    t, Y = simulate_sde_euler_maruyama(y0, (0.0, t_end), dt, p, gate_approx)
 
-    sol = solve_ivp(
-        fun=lambda t, y: ode_system(t, y, p, gate_approx),
-        t_span=t_span,
-        y0=y0,
-        t_eval=t_eval,
-        method="RK45",
-        rtol=1e-6,
-        atol=1e-9,
-    )
-
-    print("Integration success:", sol.success)
-    print("Initial Vm (mV):", sol.y[0, 0])
-    print("Initial ci (mM):", sol.y[6, 0])
-    print("Final Vm (mV):", sol.y[0, -1])
-    print("Final ci (mM):", sol.y[6, -1])
+    Vm = Y[0]
+    ci = Y[6]
+# 
+    # print("Integration success:", sol.success)
+    # print("Initial Vm (mV):", sol.y[0, 0])
+    # print("Initial ci (mM):", sol.y[6, 0])
+    # print("Final Vm (mV):", sol.y[0, -1])
+    # print("Final ci (mM):", sol.y[6, -1])
 
     
-    w = (sol.y[6]**p.n_KCa) / (sol.y[6]**p.n_KCa + p.Kd_KCa**p.n_KCa)
+    w = (ci**p.n_KCa) / (ci**p.n_KCa + p.Kd_KCa**p.n_KCa)
     print(w[-2000:].min(), w[-2000:].max())
 
     
     fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    ax[0].plot(sol.t*1e-3, sol.y[0],c="blue")
-    ax[1].plot(sol.t*1e-3, sol.y[6],c="red")
+    ax[0].plot(t*1e-3, Vm,c="blue")
+    ax[1].plot(t*1e-3, ci,c="red")
     ax[0].set_xlabel('Time (ms)')
     ax[1].set_xlabel('Time (ms)')
     ax[0].set_ylabel('Membrane voltage (Vm in mV)')
@@ -61,9 +54,9 @@ if __name__ == "__main__":
     plt.savefig('./HHType_with_KCa.png',dpi=300)
     plt.show()
     
-    t = sol.t
-    Vm = sol.y[0]
-    ci = sol.y[6]
+    # t = sol.t
+    # Vm = sol.y[0]
+    # ci = sol.y[6]
 
     # Initial values
     Vm0 = Vm[0]
