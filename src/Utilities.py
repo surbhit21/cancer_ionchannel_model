@@ -8,15 +8,15 @@ class Params:
     # Maximal conductances (mS/cm^2)
     gNa: float = 0.15
     gCa: float = 0.03
-    gK:  float = 1.1
-    gCl: float = 0
+    gK:  float = 0.0
+    gCl: float = 0.0
 
     # NEW: Ca-activated K conductance
-    gKCa: float = 0.2   # tune this (0.05–2.0 is a reasonable sweep)
+    gKCa: float = 1.1   # tune this (0.05–2.0 is a reasonable sweep)
 
     # Leak (placeholder)
-    gL: float = 0.02
-    EL: float = -60.0
+    gL: float = 0.001
+    EL: float = -30.0
 
     # Reversal potentials (mV)
     ENa: float = 67.0
@@ -35,39 +35,42 @@ class Params:
     I_ext: float = 0.00
     
     # Calcium dynamics
-    crest: float = 1.5e-5
-    gamma: float = 1e-3
+    crest: float = 2.1e-5
+    gamma: float = 1e-6
     f: float = 1
     r_cm: float = 1e-3
     F: float = 9.6485e4
 
     # NEW: KCa activation parameters (ci in mM)
-    Kd_KCa: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
+    Kd_KCa: float = 2e-4  # mM (0.2 µM). Try 1e-4–1e-3
     n_KCa: float = 2 # Hill coefficient (2–4 common)
     
     
     # parameters for the CICR and SERCA pumps 
     
-    rho_er: float = 10.0      # V_ER / V_cyt volume ratio (typical 5–20)
-    cER_rest: float = 0.5     # mM, resting store Ca (tune)
+    rho_er: float = 15.0      # V_ER / V_cyt volume ratio (typical 5–20)
+    cER_rest: float = 4e-4    # mM, resting store Ca (tune)
 
-    v_rel: float = 0.05       # mM/ms, max CICR release rate (tune)
+    v_rel: float = 4e-2      # mM/ms, max CICR release rate (tune)
     K_act: float = 5e-4       # mM, Ca activation for release (0.5 µM)
     n_act: float = 2.0        # Hill for activation
 
     K_ER: float = 0.2         # mM, store-dependence (optional saturation)
     n_ER: float = 2.0         # Hill for store dependence
 
-    v_serca: float = 0.02     # mM/ms, max SERCA uptake (tune)
+    v_serca: float = 2e-2     # mM/ms, max SERCA uptake (tune)
     K_serca: float = 3e-4     # mM, half-sat SERCA (~0.3 µM)
     n_serca: float = 2.0      # Hill SERCA
 
     k_leak: float = 1e-4      # 1/ms, passive leak ER -> cyt (small)
     
-    gate_sigma: float = 1e-3
+    gate_sigma: float = 3e-3
     ca_sigma: float = 2e-5     
     seed : int = 0
     
+    dt = 1e-3 
+    
+        
 def sigmoid_x_inf(Vm_mV: float, Vhalf: float, k: float) -> float:
     return 1.0 / (1.0 + np.exp(-(Vm_mV - Vhalf) / k))
 
@@ -145,19 +148,19 @@ def clamp01(x):
     return np.clip(x, 0.0, 1.0)
 
 def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
-    Vm, m, h, n, s, r, ci, cER = y
+    Vm, m, h, n, s, r, ci, cER = y[:8]
 
     IL, INa, ICa, IK, ICl, IKCa = currents(Vm, m, h, n, s, r, ci, p)
 
     # Membrane equation: C dVm/dt = -(sum currents)
-    dVm = (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
+    dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
 
     # Gating variables
-    dm = gate_rhs(m, Vm, "m", gate_approx )
-    dh = gate_rhs(h, Vm, "h", gate_approx)
-    dn = gate_rhs(n, Vm, "n", gate_approx)
-    ds = gate_rhs(s, Vm, "s", gate_approx)
-    dr = gate_rhs(r, Vm, "r", gate_approx)
+    dm = p.dt * gate_rhs(m, Vm, "m", gate_approx ) 
+    dh = p.dt * gate_rhs(h, Vm, "h", gate_approx)
+    dn = p.dt * gate_rhs(n, Vm, "n", gate_approx)
+    ds = p.dt * gate_rhs(s, Vm, "s", gate_approx)
+    dr = p.dt * gate_rhs(r, Vm, "r", gate_approx)
     
     if int(t_ms) == 3000:
         print("Vm", Vm, "ICa", ICa, "ci", ci, "wKCa", w_kca(ci, p))
@@ -169,69 +172,60 @@ def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -
     Jrel   = J_release(ci, cER, p)
     Jserca = J_serca(ci, p)
     Jlk    = J_leak(ci, cER, p)
+    Jexit = p.gamma * (ci - p.crest)
 
     # cytosol Ca: influx + (ER->cyt) - (cyt->ER) + leak, plus your extrusion to baseline
-    dci = J_mem + (Jrel + Jlk) - Jserca - p.gamma * (ci - p.crest)
+    dci = p.dt * (J_mem + (Jrel + Jlk) - Jserca - Jexit)
 
     # store Ca: opposite sign, scaled by volume ratio (conservation across compartments)
-    dcER = (p.rho_er) * (Jserca - (Jrel + Jlk))
+    dcER = p.dt * ((p.rho_er) * (Jserca - (Jrel + Jlk)))
    
-    # return np.array([
-    #     dVm,
-    #     clamp01(dm),
-    #     clamp01(dh),
-    #     clamp01(dn),
-    #     clamp01(ds),
-    #     clamp01(dr),
-    #     dci,
-    #     dcER
-    # ], dtype=float)
-    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER,IL, INa, ICa, IK, ICl, IKCa,J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
 def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
     Vm, m, h, n, s, r, ci, cER = y
 
     IL, INa, ICa, IK, ICl, IKCa = currents(Vm, m, h, n, s, r, ci, p)
-    dVm = (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
+    dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
 
-    dm = gate_rhs(m, Vm, "m", gate_approx)
-    dh = gate_rhs(h, Vm, "h", gate_approx)
-    dn = gate_rhs(n, Vm, "n", gate_approx)
-    ds = gate_rhs(s, Vm, "s", gate_approx)
-    dr = gate_rhs(r, Vm, "r", gate_approx)
+    dm = p.dt * gate_rhs(m, Vm, "m", gate_approx)
+    dh = p.dt * gate_rhs(h, Vm, "h", gate_approx)
+    dn = p.dt * gate_rhs(n, Vm, "n", gate_approx)
+    ds = p.dt * gate_rhs(s, Vm, "s", gate_approx)
+    dr = p.dt * gate_rhs(r, Vm, "r", gate_approx)
 
     J_mem = -(p.f * 3.0 * ICa) / (2000.0 * p.r_cm * p.F)
     Jrel   = J_release(ci, cER, p)
     Jserca = J_serca(ci, p)
     Jlk    = J_leak(ci, cER, p)
+    Jexit = p.gamma * (ci - p.crest)
+    dci  = p.dt * (J_mem + (Jrel + Jlk) - Jserca - Jexit)
+    dcER = p.dt * ((p.rho_er) * (Jserca - (Jrel + Jlk)))
 
-    dci  = J_mem + (Jrel + Jlk) - Jserca - p.gamma * (ci - p.crest)
-    dcER = (p.rho_er) * (Jserca - (Jrel + Jlk))
-
-    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, ICl, IKCa], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
 def simulate_sde_euler_maruyama(
     y0: np.ndarray,
     t_span: tuple[float, float],
-    dt: float,
     p: Params,
     gate_approx: GateApprox,
 ):
     rng = np.random.default_rng(p.seed)
 
     t0, t1 = t_span
-    n_steps = int(np.floor((t1 - t0) / dt)) + 1
+    n_steps = int(np.floor((t1 - t0) / p.dt)) + 1
 
-    t = np.linspace(t0, t0 + dt*(n_steps-1), n_steps)
+    t = np.linspace(t0, t0 + p.dt*(n_steps-1), n_steps)
     Y = np.zeros((len(y0), n_steps), dtype=float)
+    Currs = np.zeros((6, n_steps), dtype=float)  # to store currents if needed
+    ca_fluxes = np.zeros((5, n_steps), dtype=float)  # to store ca fluxes if needed
     Y[:, 0] = y0
 
-    sqrt_dt = np.sqrt(dt)
+    sqrt_dt = np.sqrt(p.dt)
 
     for k in range(n_steps - 1):
         y = Y[:, k]
-        dy = ode_deterministic(t[k], y, p, gate_approx)
-
+        dy,Currs[:, k],ca_fluxes[:,k] = ode_deterministic(t[k], y, p, gate_approx)
         # additive noise only on gates (m,h,n,s,r) = indices 1..5
         dW = rng.standard_normal(5)  # N(0,1)
         dW_store = rng.standard_normal()
@@ -239,7 +233,7 @@ def simulate_sde_euler_maruyama(
         dy[1:6] += p.gate_sigma * (dW / sqrt_dt)  # convert to "derivative" form? (see note below)
 
         # Euler update with proper SDE scaling:
-        y_next = y + dy * dt
+        y_next = y + dy * p.dt
         y_next[1:6] += p.gate_sigma * sqrt_dt * dW  # correct EM increment
         y_next[6] += p.ca_sigma * eta  # correct EM increment for ca in cytosol
         y_next[7] -= (p.rho_er) * p.ca_sigma * eta # correct EM increment for ca in ER
@@ -253,4 +247,4 @@ def simulate_sde_euler_maruyama(
 
         Y[:, k+1] = y_next
 
-    return t, Y
+    return t, Y, Currs, ca_fluxes

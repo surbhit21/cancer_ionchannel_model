@@ -1,33 +1,30 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+from pathlib import Path
+import Plotting as cplot
 from scipy.integrate import solve_ivp
 from Utilities import *
-
-
     
-
-    # return np.array([dVm, dm, dh, dn, ds, dr, dci], dtype=float)
-
-
 if __name__ == "__main__":
     p = Params()
     gate_approx = DEFAULT_GATE_APPROX
 
-    Vm0 = -60.0
+    Vm0 = -65.0
     m0 = sigmoid_x_inf(Vm0, gate_approx["m"]["Vhalf"], gate_approx["m"]["k"])
     h0 = sigmoid_x_inf(Vm0, gate_approx["h"]["Vhalf"], gate_approx["h"]["k"])
     n0 = sigmoid_x_inf(Vm0, gate_approx["n"]["Vhalf"], gate_approx["n"]["k"])
     s0 = sigmoid_x_inf(Vm0, gate_approx["s"]["Vhalf"], gate_approx["s"]["k"])
     r0 = sigmoid_x_inf(Vm0, gate_approx["r"]["Vhalf"], gate_approx["r"]["k"])
-    ci0 = 0.002
+    ci0 = 4.1e-5
     
     cER0 = p.cER_rest
-    y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0], dtype=float)
+    y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0, 0., 0., 0., 0., 0., 0.,0.,0.,0.,0.,0.], dtype=float)
 
 
-    t_span = (0.0, 15000.0)  # ms (give it time to settle into a limit cycle)
-    t_eval = np.linspace(*t_span, 15001)
+    t_end = 100000  # ms
+    t_span = (0.0, t_end)  # ms (give it time to settle into a limit cycle)
+    t_eval = np.linspace(*t_span, t_end+1)
 
     sol = solve_ivp(
         fun=lambda t, y: ode_system(t, y, p, gate_approx),
@@ -38,7 +35,7 @@ if __name__ == "__main__":
         rtol=1e-6,
         atol=1e-9,
     )
-
+    # breakpoint()
     print("Integration success:", sol.success)
     print("Initial Vm (mV):", sol.y[0, 0])
     print("Initial ci (mM):", sol.y[6, 0])
@@ -46,55 +43,72 @@ if __name__ == "__main__":
     print("Final ci (mM):", sol.y[6, -1])
 
     
-    w = (sol.y[6]**p.n_KCa) / (sol.y[6]**p.n_KCa + p.Kd_KCa**p.n_KCa)
-    print(w[-2000:].min(), w[-2000:].max())
-
-    
-    fig, ax = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
-    ax[0].plot(sol.t*1e-3, sol.y[0],c="blue")
-    ax[1].plot(sol.t*1e-3, sol.y[6],c="red")
-    ax[0].set_xlabel('Time (ms)')
-    ax[1].set_xlabel('Time (ms)')
-    ax[0].set_ylabel('Membrane voltage (Vm in mV)')
-    ax[1].set_ylabel('Cytosolic calcium (ci in mM)')
-    plt.legend()
-    plt.savefig('./HHType_with_KCa.png',dpi=300)
-    plt.show()
-    
-    t = sol.t
+    ts = sol.t
     Vm = sol.y[0]
     ci = sol.y[6]
-
-    # Initial values
-    Vm0 = Vm[0]
-    ci0 = ci[0]
-
-    # Normalised signals
-    Vm_norm = (Vm - Vm0) / abs(Vm0)   # relative Vm change
-    ci_norm = ci / ci0               # Ca fold-change
-
-    # Create figure and twin axes
-    fig, ax1 = plt.subplots(figsize=(10, 5))
-    ax2 = ax1.twinx()
-
-    # Plot Vm (left axis)
-    ax1.plot(t*1e-3, Vm_norm, color="blue", label="Vm (normalised)")
-    ax1.set_ylabel("Normalised $V_m$", color="blue")
-    ax1.tick_params(axis="y", labelcolor="blue")
-
-    # Plot Ca (right axis)
-    ax2.plot(t*1e-3, ci_norm, color="red", label="Ca (normalised)")
-    ax2.set_ylabel("Normalised $c_i$", color="red")
-    ax2.tick_params(axis="y", labelcolor="red")
-
-    # Shared x-axis
-    ax1.set_xlabel("Time (ms)")
-
-    # Optional: combined legend
-    lines_1, labels_1 = ax1.get_legend_handles_labels()
-    lines_2, labels_2 = ax2.get_legend_handles_labels()
-    ax1.legend(lines_1 + lines_2, labels_1 + labels_2, loc="upper right")
-
-    plt.tight_layout()
-    plt.savefig('./norm_HHType_with_KCa.png',dpi=300)
+    IL, INa, ICa, IK, ICl, IKCa = sol.y[8],sol.y[9],sol.y[10],sol.y[11],sol.y[12],sol.y[13]
+    J_mem, Jrel, Jserca, Jlk, Jexit = sol.y[14],sol.y[15],sol.y[16],sol.y[17],sol.y[18]
+    w = (sol.y[6]**p.n_KCa) / (sol.y[6]**p.n_KCa + p.Kd_KCa**p.n_KCa)
+    current_dicts = {
+        'IL': IL,
+        'INa': INa,
+        'ICa': ICa,
+        'IK': IK,
+        'ICl': ICl,
+        'IKCa': IKCa
+    }
+    
+    caflux_dicts = {
+        # 'J_mem': J_mem,
+        'Jrel': Jrel,
+        'Jserca': Jserca,
+        # 'Jlk': Jlk,
+        # 'Jexit': Jexit
+    }
+   
+    
+   
+    plt.plot(ts,w)
+    plt.xlabel('Time (ms)')
+    plt.ylabel('KCa activation variable (w)')
+    plt.title('KCa activation variable over time')
+    plt.savefig('./HHType_KCa_activation_variable.png', dpi=300)
     plt.show()
+    
+    cplot.plot_vm_and_ci(
+        t_ms=ts,
+        Vm_mV=Vm,
+        ci_mM=ci,
+        savepath=Path('./HHType_Vm_ci_with_KCa.png'),
+        show=True,
+        dpi=300,
+    )
+    
+    cplot.plot_currents(
+        t_ms=ts,
+        currents=current_dicts,
+        ylabel=r"Current $(\mu A/cm^2)$",
+        savepath=Path('./HHType_currents_with_KCa.png'),
+        show=True,
+        dpi=300,
+    )
+
+    cplot.plot_currents(
+        t_ms=ts,
+        currents=caflux_dicts,
+        ylabel=r"Calcium Flux $(\mu M/ms)$",
+        savepath=Path('./HHType_currents_with_KCa.png'),
+        show=True,
+        dpi=300,
+    )
+
+    cplot.plot_normalised_vm_and_ci(
+        t_ms=ts,
+        Vm_mV=Vm,
+        ci_mM=ci,
+        savepath=Path('./HHType_norm_Vm_ci_with_KCa.png'),
+        show=True,
+        dpi=300,
+    )
+    
+    
