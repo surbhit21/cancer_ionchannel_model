@@ -8,15 +8,15 @@ class Params:
     # Maximal conductances (mS/cm^2)
     gNa: float = 0.15
     gCa: float = 0.03
-    gK:  float = 0.0
+    gK:  float = 1.1
     gCl: float = 0.0
 
     # NEW: Ca-activated K conductance
-    gKCa: float = 1.1   # tune this (0.05–2.0 is a reasonable sweep)
+    gKCa: float = 1.1  # tune this (0.05–2.0 is a reasonable sweep)
 
     # Leak (placeholder)
-    gL: float = 0.001
-    EL: float = -30.0
+    gL: float = 0.02
+    EL: float = -60.0
 
     # Reversal potentials (mV)
     ENa: float = 67.0
@@ -35,40 +35,40 @@ class Params:
     I_ext: float = 0.00
     
     # Calcium dynamics
-    crest: float = 2.1e-5
-    gamma: float = 1e-6
+    crest: float = 1.5e-5
+    gamma: float = 1e-3
     f: float = 1
     r_cm: float = 1e-3
     F: float = 9.6485e4
 
     # NEW: KCa activation parameters (ci in mM)
-    Kd_KCa: float = 2e-4  # mM (0.2 µM). Try 1e-4–1e-3
+    Kd_KCa: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
     n_KCa: float = 2 # Hill coefficient (2–4 common)
     
     
     # parameters for the CICR and SERCA pumps 
     
-    rho_er: float = 15.0      # V_ER / V_cyt volume ratio (typical 5–20)
-    cER_rest: float = 4e-4    # mM, resting store Ca (tune)
+    rho_er: float = 10.0      # V_ER / V_cyt volume ratio (typical 5–20)
+    cER_rest: float = 0.05    # mM, resting store Ca (tune)
 
-    v_rel: float = 4e-2      # mM/ms, max CICR release rate (tune)
-    K_act: float = 5e-4       # mM, Ca activation for release (0.5 µM)
+    v_rel: float = 0.01   # mM/ms, max CICR release rate (tune)
+    K_act: float = 1e-3       # mM, Ca activation for release (0.5 µM)
     n_act: float = 2.0        # Hill for activation
 
-    K_ER: float = 0.2         # mM, store-dependence (optional saturation)
-    n_ER: float = 2.0         # Hill for store dependence
+    # K_ER: float = 0.02         # mM, store-dependence (optional saturation)
+    # n_ER: float = 2.0         # Hill for store dependence
 
     v_serca: float = 2e-2     # mM/ms, max SERCA uptake (tune)
     K_serca: float = 3e-4     # mM, half-sat SERCA (~0.3 µM)
     n_serca: float = 2.0      # Hill SERCA
 
-    k_leak: float = 1e-4      # 1/ms, passive leak ER -> cyt (small)
+    k_leak: float = 1e-3      # 1/ms, passive leak ER -> cyt (small)
     
-    gate_sigma: float = 3e-3
-    ca_sigma: float = 2e-5     
+    gate_sigma: float = 1e-4
+    ca_sigma: float = 1e-5     
     seed : int = 0
     
-    dt = 1e-3 
+    dt = 1
     
         
 def sigmoid_x_inf(Vm_mV: float, Vhalf: float, k: float) -> float:
@@ -84,8 +84,8 @@ def vdep_tau_ms(Vm_mV: float, tau_min: float, tau_max: float, Vhalf: float, k: f
 def J_release(ci: float, cER: float, p: Params) -> float:
     # Ca-triggered release * store-availability
     act = (ci**p.n_act) / (ci**p.n_act + p.K_act**p.n_act + 1e-30)
-    avail = (cER**p.n_ER) / (cER**p.n_ER + p.K_ER**p.n_ER + 1e-30)
-    return p.v_rel * act * avail
+    # avail = (cER**p.n_ER) / (cER**p.n_ER + p.K_ER**p.n_ER + 1e-30)
+    return p.v_rel * act *(cER-ci)
 
 def J_serca(ci: float, p: Params) -> float:
     return p.v_serca * (ci**p.n_serca) / (ci**p.n_serca + p.K_serca**p.n_serca + 1e-30)
@@ -97,11 +97,12 @@ def J_leak(ci: float, cER: float, p: Params) -> float:
 
 GateApprox = Dict[str, Dict[str, float]]
 DEFAULT_GATE_APPROX: GateApprox = {
-    "m": {"Vhalf": -35.0, "k": 7.0,  "tau_min": 0.1, "tau_max": 2.0,  "Vtau": -40.0, "ktau": 10.0},
-    "h": {"Vhalf": -55.0, "k": -7.0, "tau_min": 1.0,  "tau_max": 16.0,  "Vtau": -55.0, "ktau": 12.0},
-    "n": {"Vhalf": -30.0, "k": 10.0, "tau_min": 1.0,  "tau_max": 20.0,  "Vtau": -35.0, "ktau": 12.0},
-    "s": {"Vhalf": -45.0, "k": 7.0,  "tau_min": 2.0,  "tau_max": 40.0, "Vtau": -30.0, "ktau": 10.0},
-    "r": {"Vhalf": -20.0, "k": 8.0,  "tau_min": 2.0,  "tau_max": 30.0, "Vtau": -25.0, "ktau": 10.0},
+    "m_ca": {"Vhalf": -35.0, "k": 9.0,  "tau_min": 0.1, "tau_max": 2.0,  "Vtau": -40.0, "ktau": 2.0},
+    "h_ca": {"Vhalf": -55.0, "k": -9.0, "tau_min": 1.0,  "tau_max": 16.0,  "Vtau": -55.0, "ktau": 15.0},
+    "m_k": {"Vhalf": -30.0, "k": 12.0, "tau_min": 1.0,  "tau_max": 20.0,  "Vtau": -35.0, "ktau": 15.0},
+    "m_Ca": {"Vhalf": -45.0, "k": 9.0,  "tau_min": 2.0,  "tau_max": 40.0, "Vtau": -30.0, "ktau": 15.0},
+    "m_Cl": {"Vhalf": -20.0, "k": 10.0,  "tau_min": 2.0,  "tau_max": 30.0, "Vtau": -25.0, "ktau": 15.0}
+
 }
 
 
@@ -156,11 +157,11 @@ def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -
     dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
 
     # Gating variables
-    dm = p.dt * gate_rhs(m, Vm, "m", gate_approx ) 
-    dh = p.dt * gate_rhs(h, Vm, "h", gate_approx)
-    dn = p.dt * gate_rhs(n, Vm, "n", gate_approx)
-    ds = p.dt * gate_rhs(s, Vm, "s", gate_approx)
-    dr = p.dt * gate_rhs(r, Vm, "r", gate_approx)
+    dm = p.dt * gate_rhs(m, Vm, "m_ca", gate_approx ) 
+    dh = p.dt * gate_rhs(h, Vm, "h_ca", gate_approx)
+    dn = p.dt * gate_rhs(n, Vm, "m_k", gate_approx)
+    ds = p.dt * gate_rhs(s, Vm, "m_Ca", gate_approx)
+    dr = p.dt * gate_rhs(r, Vm, "m_Cl", gate_approx)
     
     if int(t_ms) == 3000:
         print("Vm", Vm, "ICa", ICa, "ci", ci, "wKCa", w_kca(ci, p))
@@ -186,21 +187,21 @@ def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateAp
     Vm, m, h, n, s, r, ci, cER = y
 
     IL, INa, ICa, IK, ICl, IKCa = currents(Vm, m, h, n, s, r, ci, p)
-    dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
+    dVm = (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
 
-    dm = p.dt * gate_rhs(m, Vm, "m", gate_approx)
-    dh = p.dt * gate_rhs(h, Vm, "h", gate_approx)
-    dn = p.dt * gate_rhs(n, Vm, "n", gate_approx)
-    ds = p.dt * gate_rhs(s, Vm, "s", gate_approx)
-    dr = p.dt * gate_rhs(r, Vm, "r", gate_approx)
+    dm =  gate_rhs(m, Vm, "m_ca", gate_approx ) 
+    dh = gate_rhs(h, Vm, "h_ca", gate_approx)
+    dn = gate_rhs(n, Vm, "m_k", gate_approx)
+    ds = gate_rhs(s, Vm, "m_Ca", gate_approx)
+    dr = gate_rhs(r, Vm, "m_Cl", gate_approx)
 
     J_mem = -(p.f * 3.0 * ICa) / (2000.0 * p.r_cm * p.F)
     Jrel   = J_release(ci, cER, p)
     Jserca = J_serca(ci, p)
     Jlk    = J_leak(ci, cER, p)
     Jexit = p.gamma * (ci - p.crest)
-    dci  = p.dt * (J_mem + (Jrel + Jlk) - Jserca - Jexit)
-    dcER = p.dt * ((p.rho_er) * (Jserca - (Jrel + Jlk)))
+    dci  = (J_mem + (Jrel + Jlk) - Jserca - Jexit)
+    dcER = ((p.rho_er) * (Jserca - (Jrel + Jlk)))
 
     return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, ICl, IKCa], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
@@ -231,7 +232,6 @@ def simulate_sde_euler_maruyama(
         dW_store = rng.standard_normal()
         eta = sqrt_dt * dW_store
         dy[1:6] += p.gate_sigma * (dW / sqrt_dt)  # convert to "derivative" form? (see note below)
-
         # Euler update with proper SDE scaling:
         y_next = y + dy * p.dt
         y_next[1:6] += p.gate_sigma * sqrt_dt * dW  # correct EM increment
@@ -248,3 +248,28 @@ def simulate_sde_euler_maruyama(
         Y[:, k+1] = y_next
 
     return t, Y, Currs, ca_fluxes
+
+
+
+def get_activation_deactivation_curves(
+    V_mV: np.ndarray,
+    gate_approx: GateApprox,
+) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
+    """Return activation/inactivation curves for all gates over given Vm range."""
+    curves = {}
+    for gate_name in gate_approx.keys():
+        x_inf = sigmoid_x_inf(
+            V_mV,
+            gate_approx[gate_name]["Vhalf"],
+            gate_approx[gate_name]["k"],
+        )
+        taus = vdep_tau_ms(
+            V_mV,
+            gate_approx[gate_name]["tau_min"],
+            gate_approx[gate_name]["tau_max"],
+            gate_approx[gate_name]["Vtau"],
+            gate_approx[gate_name]["ktau"],
+        )
+        curves[gate_name] = (x_inf, taus)
+        
+    return curves

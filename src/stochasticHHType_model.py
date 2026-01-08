@@ -14,17 +14,18 @@ if __name__ == "__main__":
     gate_approx = DEFAULT_GATE_APPROX
     sim_type ='SEM'
     Vm0 = -65.0
-    m0 = sigmoid_x_inf(Vm0, gate_approx["m"]["Vhalf"], gate_approx["m"]["k"])
-    h0 = sigmoid_x_inf(Vm0, gate_approx["h"]["Vhalf"], gate_approx["h"]["k"])
-    n0 = sigmoid_x_inf(Vm0, gate_approx["n"]["Vhalf"], gate_approx["n"]["k"])
-    s0 = sigmoid_x_inf(Vm0, gate_approx["s"]["Vhalf"], gate_approx["s"]["k"])
-    r0 = sigmoid_x_inf(Vm0, gate_approx["r"]["Vhalf"], gate_approx["r"]["k"])
-    ci0 = 2.1e-5
+    m0 = sigmoid_x_inf(Vm0, gate_approx["m_ca"]["Vhalf"], gate_approx["m_ca"]["k"])
+    h0 = sigmoid_x_inf(Vm0, gate_approx["h_ca"]["Vhalf"], gate_approx["h_ca"]["k"])
+    n0 = sigmoid_x_inf(Vm0, gate_approx["m_k"]["Vhalf"], gate_approx["m_k"]["k"])
+    s0 = sigmoid_x_inf(Vm0, gate_approx["m_Ca"]["Vhalf"], gate_approx["m_Ca"]["k"])
+    r0 = sigmoid_x_inf(Vm0, gate_approx["m_Cl"]["Vhalf"], gate_approx["m_Cl"]["k"])
+    ci0 = 0.04
+    # ci0 = 0.02
     
     cER0 = p.cER_rest
     y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0], dtype=float)
 
-    t_end = 50000  # ms
+    t_end = 20000  # ms
     t_span = (0.0, t_end)  # ms (give it time to settle into a limit cycle)
     t_eval = np.linspace(*t_span, t_end+1)
     # dt = 0.01
@@ -57,44 +58,45 @@ if __name__ == "__main__":
    
     
    
-    plt.plot(ts,w)
-    plt.xlabel('Time (ms)')
+    plt.plot(ts*p.dt*1e-3,w)
+    plt.xlabel('Time (s)')
     plt.ylabel('KCa activation variable (w)')
     plt.title('KCa activation variable over time')
+    plt.savefig(Path('./plots/SDE_HHType_KCa_activation_variable.png'), dpi=300)
     plt.show()
     
     cplot.plot_vm_and_ci(
-        t_ms=ts,
+        t_ms=ts*p.dt,
         Vm_mV=Vm,
         ci_mM=ci,
-        savepath=Path('./SDE_HHType_Vm_ci_with_KCa.png'),
+        savepath=Path('./plots/SDE_HHType_Vm_ci_with_KCa.png'),
         show=True,
         dpi=300,
     )
     
     cplot.plot_currents(
-        t_ms=ts,
+        t_ms=ts*p.dt,
         currents=current_dicts,
         ylabel=r"Current $(\mu A/cm^2)$",
-        savepath=Path('./SDE_HHType_currents_with_KCa.png'),
+        savepath=Path('./plots/SDE_HHType_currents_with_KCa.png'),
         show=True,
         dpi=300,
     )
 
     cplot.plot_currents(
-        t_ms=ts,
+        t_ms=ts*p.dt,
         currents=caflux_dicts,
         ylabel="Calcium Flux (nA)",
-        savepath=Path('./SDE_HHType_currents_with_KCa.png'),
+        savepath=Path('./plots/SDE_HHType_currents_with_KCa.png'),
         show=True,
         dpi=300,
     )
 
     cplot.plot_normalised_vm_and_ci(
-        t_ms=ts,
+        t_ms=ts*p.dt,
         Vm_mV=Vm,
         ci_mM=ci,
-        savepath=Path('./SDE_HHType_norm_Vm_ci_with_KCa.png'),
+        savepath=Path('./plots/SDE_HHType_norm_Vm_ci_with_KCa.png'),
         show=True,
         dpi=300,
     )

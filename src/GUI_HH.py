@@ -106,7 +106,9 @@ class MainWindow(QMainWindow):
         self.slider_specs = [
             ("Kd_KCa", "Kd_KCa", 1e-4, 5e-2),
             ("n_KCa", "n_KCa", 1.0, 8.0),
-            ("cER_rest", "cER_rest", 1e-3, 5e-1),
+            ("v_rel", "v_rel", 0.0, .10),
+            ("v_serca", "v_serca", 0.0, .10),
+            # ("cER_rest", "cER_rest", 1e-3, 5e-1),
             # Add up to 2 more (must exist in Params):
             # ("gKCa", "gKCa", 0.0, 50.0),
             # ("tau_Ca", "tau_Ca", 1.0, 1000.0),
@@ -165,15 +167,15 @@ class MainWindow(QMainWindow):
     def initial_state(self):
         Vm0 = -65.0
         g = self.gate_approx
-        m0 = sigmoid_x_inf(Vm0, g["m"]["Vhalf"], g["m"]["k"])
-        h0 = sigmoid_x_inf(Vm0, g["h"]["Vhalf"], g["h"]["k"])
-        n0 = sigmoid_x_inf(Vm0, g["n"]["Vhalf"], g["n"]["k"])
-        s0 = sigmoid_x_inf(Vm0, g["s"]["Vhalf"], g["s"]["k"])
-        r0 = sigmoid_x_inf(Vm0, g["r"]["Vhalf"], g["r"]["k"])
-        ci0 = 0.002
+        m0 = sigmoid_x_inf(Vm0, g["m_ca"]["Vhalf"], g["m_ca"]["k"])
+        h0 = sigmoid_x_inf(Vm0, g["h_ca"]["Vhalf"], g["h_ca"]["k"])
+        n0 = sigmoid_x_inf(Vm0, g["m_k"]["Vhalf"], g["m_k"]["k"])
+        s0 = sigmoid_x_inf(Vm0, g["m_Ca"]["Vhalf"], g["m_Ca"]["k"])
+        r0 = sigmoid_x_inf(Vm0, g["m_Cl"]["Vhalf"], g["m_Cl"]["k"])
+        ci0 = 0.04
 
         cER0 = float(self.p.cER_rest)
-        return np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0], dtype=float)
+        return np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0,0., 0., 0., 0., 0., 0.,0.,0.,0.,0.,0.], dtype=float)
 
     def run_and_plot(self):
         self.run_btn.setEnabled(False)

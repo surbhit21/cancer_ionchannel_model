@@ -5,23 +5,34 @@ from pathlib import Path
 import Plotting as cplot
 from scipy.integrate import solve_ivp
 from Utilities import *
-    
+from Plotting import ensure_dir_exists
 if __name__ == "__main__":
     p = Params()
     gate_approx = DEFAULT_GATE_APPROX
 
     Vm0 = -65.0
-    m0 = sigmoid_x_inf(Vm0, gate_approx["m"]["Vhalf"], gate_approx["m"]["k"])
-    h0 = sigmoid_x_inf(Vm0, gate_approx["h"]["Vhalf"], gate_approx["h"]["k"])
-    n0 = sigmoid_x_inf(Vm0, gate_approx["n"]["Vhalf"], gate_approx["n"]["k"])
-    s0 = sigmoid_x_inf(Vm0, gate_approx["s"]["Vhalf"], gate_approx["s"]["k"])
-    r0 = sigmoid_x_inf(Vm0, gate_approx["r"]["Vhalf"], gate_approx["r"]["k"])
-    ci0 = 4.1e-5
+    m0 = sigmoid_x_inf(Vm0, gate_approx["m_ca"]["Vhalf"], gate_approx["m_ca"]["k"])
+    h0 = sigmoid_x_inf(Vm0, gate_approx["h_ca"]["Vhalf"], gate_approx["h_ca"]["k"])
+    n0 = sigmoid_x_inf(Vm0, gate_approx["m_k"]["Vhalf"], gate_approx["m_k"]["k"])
+    s0 = sigmoid_x_inf(Vm0, gate_approx["m_Ca"]["Vhalf"], gate_approx["m_Ca"]["k"])
+    r0 = sigmoid_x_inf(Vm0, gate_approx["m_Cl"]["Vhalf"], gate_approx["m_Cl"]["k"])
+    ci0 = 0.04
     
     cER0 = p.cER_rest
     y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0, 0., 0., 0., 0., 0., 0.,0.,0.,0.,0.,0.], dtype=float)
 
 
+    ensure_dir_exists('./plots/')
+    Vms = np.arange(-120.0, 30.0, 0.1)
+    ad_curves = get_activation_deactivation_curves(Vms, gate_approx)
+    labs = {
+        'm_ca': r'$m_{Ca,\infty}$',
+        'h_ca': r'$h_{Ca,\infty}$',
+        'm_k': r'$m_{K,\infty}$',
+        'm_Ca': r'$m_{Ca,\infty}$',
+        'm_Cl': r'$m_{Cl,\infty}$'
+    }
+    
     t_end = 100000  # ms
     t_span = (0.0, t_end)  # ms (give it time to settle into a limit cycle)
     t_eval = np.linspace(*t_span, t_end+1)
@@ -35,15 +46,15 @@ if __name__ == "__main__":
         rtol=1e-6,
         atol=1e-9,
     )
-    # breakpoint()
-    print("Integration success:", sol.success)
-    print("Initial Vm (mV):", sol.y[0, 0])
-    print("Initial ci (mM):", sol.y[6, 0])
-    print("Final Vm (mV):", sol.y[0, -1])
-    print("Final ci (mM):", sol.y[6, -1])
+    gating_dicts = {
+        'm_ca': sol.y[1],
+        'h_ca': sol.y[2],
+        'm_k': sol.y[3],
+        'm_Ca': sol.y[4],
+        'm_Cl': sol.y[5]
+    }
 
-    
-    ts = sol.t
+    ts = sol.t*p.dt
     Vm = sol.y[0]
     ci = sol.y[6]
     IL, INa, ICa, IK, ICl, IKCa = sol.y[8],sol.y[9],sol.y[10],sol.y[11],sol.y[12],sol.y[13]
@@ -65,21 +76,32 @@ if __name__ == "__main__":
         # 'Jlk': Jlk,
         # 'Jexit': Jexit
     }
-   
+
+    cplot.plot_gating_variables(Vms,ad_curves,ylabels = ["gating value","Time constants (ms)"], savepath=Path('./plots/HHType_gate_curves_with_KCa.png'), labs=labs,show=True, dpi=300)
+    cplot.plot_currents(ts,gating_dicts,ylabel = "gating value",labs=labs,show=True, dpi=300, savepath=Path('./plots/HHType_gate_timeline_with_KCa.png'))
+    # cplot.plot_currents(ts,gating_dicts,ylabel = "Time constants (ms)",labs=labs,show=True, dpi=300, savepath=Path('./plots/HHType_gate_timeconstant_with_KCa.png'))
     
-   
-    plt.plot(ts,w)
-    plt.xlabel('Time (ms)')
+    # breakpoint()
+    # breakpoint()
+    print("Integration success:", sol.success)
+    print("Initial Vm (mV):", sol.y[0, 0])
+    print("Initial ci (mM):", sol.y[6, 0])
+    print("Final Vm (mV):", sol.y[0, -1])
+    print("Final ci (mM):", sol.y[6, -1])
+
+    
+    plt.plot(ts*1e-3,w)
+    plt.xlabel('Time (s)')
     plt.ylabel('KCa activation variable (w)')
     plt.title('KCa activation variable over time')
-    plt.savefig('./HHType_KCa_activation_variable.png', dpi=300)
+    plt.savefig(Path('./plots/HHType_KCa_activation_variable.png'), dpi=300)
     plt.show()
     
     cplot.plot_vm_and_ci(
         t_ms=ts,
         Vm_mV=Vm,
         ci_mM=ci,
-        savepath=Path('./HHType_Vm_ci_with_KCa.png'),
+        savepath=Path('./plots/HHType_Vm_ci_with_KCa.png'),
         show=True,
         dpi=300,
     )
@@ -88,7 +110,7 @@ if __name__ == "__main__":
         t_ms=ts,
         currents=current_dicts,
         ylabel=r"Current $(\mu A/cm^2)$",
-        savepath=Path('./HHType_currents_with_KCa.png'),
+        savepath=Path('./plots/HHType_currents_with_KCa.png'),
         show=True,
         dpi=300,
     )
@@ -97,7 +119,7 @@ if __name__ == "__main__":
         t_ms=ts,
         currents=caflux_dicts,
         ylabel=r"Calcium Flux $(\mu M/ms)$",
-        savepath=Path('./HHType_currents_with_KCa.png'),
+        savepath=Path('./plots/HHType_currents_with_KCa.png'),
         show=True,
         dpi=300,
     )
@@ -106,7 +128,7 @@ if __name__ == "__main__":
         t_ms=ts,
         Vm_mV=Vm,
         ci_mM=ci,
-        savepath=Path('./HHType_norm_Vm_ci_with_KCa.png'),
+        savepath=Path('./plots/HHType_norm_Vm_ci_with_KCa.png'),
         show=True,
         dpi=300,
     )
