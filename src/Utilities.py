@@ -6,13 +6,16 @@ from typing import Dict, Tuple
 @dataclass
 class Params:
     # Maximal conductances (mS/cm^2)
+    # voltage-gated channels, for Na+, Ca2+, K+, Cl-
     gNa: float = 0.15
     gCa: float = 0.03
     gK:  float = 1.1
     gCl: float = 0.0
 
-    # NEW: Ca-activated K conductance
+    # NEW: Ca-activated K, Na and Cl conductance (mS/cm^2)
     gKCa: float = 1.1  # tune this (0.05–2.0 is a reasonable sweep)
+    gTRPM4 : float = 0.4    #models TRPM4 channels (typical range 0.05 - 0.4 mS/cm^2)
+    gANO1 : float = 1.  #models ANO1 channels (0.2 - 1.5 mS/cm^2)
 
     # Leak (placeholder)
     gL: float = 0.02
@@ -23,6 +26,7 @@ class Params:
     EK:  float = -80.0
     ECl: float = -77.0
     ECa: float = 120.0
+    ETRPM4 : float = 0.0  # approx reversal for non-selective cation channel
 
     # Exponents
     p: int = 2
@@ -44,6 +48,12 @@ class Params:
     # NEW: KCa activation parameters (ci in mM)
     Kd_KCa: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
     n_KCa: float = 2 # Hill coefficient (2–4 common)
+
+    Kd_TRPM4: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
+    n_TRPM4: float = 2 # Hill coefficient (2–4 common)   
+
+    Kd_ANO1: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
+    n_ANO1: float = 2 # Hill coefficient (2–4 common)
     
     
     # parameters for the CICR and SERCA pumps 
@@ -122,10 +132,20 @@ def gate_rhs(x: float, Vm: float, gate_name: str, gate_approx: GateApprox) -> fl
 # NEW: Ca-dependent activation (Hill)
 # -----------------------------
 def w_kca(ci_mM: float, p: Params) -> float:
+    ca_dep_conductances = [0.0,0.0,0.0]
     ci = max(ci_mM, 0.0)
     num = ci ** p.n_KCa
     den = num + (p.Kd_KCa ** p.n_KCa)
-    return 0.0 if den == 0.0 else num / den
+    ca_dep_conductances[0] = 0.0 if den == 0.0 else num / den
+    
+    num = ci ** p.n_TRPM4
+    den = num + (p.Kd_TRPM4 ** p.n_TRPM4)
+    ca_dep_conductances[1] = 0.0 if den == 0.0 else num / den
+
+    num = ci ** p.n_ANO1
+    den = num + (p.Kd_ANO1 ** p.n_ANO1)
+    ca_dep_conductances[2] = 0.0 if den == 0.0 else num / den
+    return ca_dep_conductances 
 
 
 # -----------------------------
@@ -140,10 +160,12 @@ def currents(Vm: float, m: float, h: float, n: float, s: float, r: float, ci: fl
     IL  = p.gL               * (Vm - p.EL)
 
     # NEW: Ca-activated K current
-    
-    IKCa = p.gKCa * w_kca(ci, p) * (Vm - p.EK)
+    conductances = w_kca(ci, p)
+    IKCa = p.gKCa * conductances[0] * (Vm - p.EK)
+    I_TRPM4 = p.gTRPM4 * conductances[1] * (Vm - p.ETRPM4)
+    I_ANO1 = p.gANO1 * conductances[2] * (Vm - p.ECl)
 
-    return IL, INa, ICa, IK, ICl, IKCa
+    return IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1
 
 def clamp01(x):
     return np.clip(x, 0.0, 1.0)
@@ -151,10 +173,10 @@ def clamp01(x):
 def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
     Vm, m, h, n, s, r, ci, cER = y[:8]
 
-    IL, INa, ICa, IK, ICl, IKCa = currents(Vm, m, h, n, s, r, ci, p)
+    IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, r, ci, p)
 
     # Membrane equation: C dVm/dt = -(sum currents)
-    dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
+    dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
 
     # Gating variables
     dm = p.dt * gate_rhs(m, Vm, "m_ca", gate_approx ) 
@@ -181,13 +203,13 @@ def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -
     # store Ca: opposite sign, scaled by volume ratio (conservation across compartments)
     dcER = p.dt * ((p.rho_er) * (Jserca - (Jrel + Jlk)))
    
-    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER,IL, INa, ICa, IK, ICl, IKCa,J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER,IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1,J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
 def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
     Vm, m, h, n, s, r, ci, cER = y
 
-    IL, INa, ICa, IK, ICl, IKCa = currents(Vm, m, h, n, s, r, ci, p)
-    dVm = (-(IL + INa + ICa + IK + ICl + IKCa) + p.I_ext) / p.C
+    IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, r, ci, p)
+    dVm = (-(IL + INa + ICa + IK + ICl + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
 
     dm =  gate_rhs(m, Vm, "m_ca", gate_approx ) 
     dh = gate_rhs(h, Vm, "h_ca", gate_approx)
@@ -203,7 +225,7 @@ def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateAp
     dci  = (J_mem + (Jrel + Jlk) - Jserca - Jexit)
     dcER = ((p.rho_er) * (Jserca - (Jrel + Jlk)))
 
-    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, ICl, IKCa], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
 def simulate_sde_euler_maruyama(
     y0: np.ndarray,

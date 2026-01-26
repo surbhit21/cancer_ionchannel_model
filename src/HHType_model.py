@@ -19,7 +19,7 @@ if __name__ == "__main__":
     ci0 = 0.04
     
     cER0 = p.cER_rest
-    y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0, 0., 0., 0., 0., 0., 0.,0.,0.,0.,0.,0.], dtype=float)
+    y0 = np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], dtype=float)
 
 
     ensure_dir_exists('./plots/')
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     ts = sol.t*p.dt
     Vm = sol.y[0]
     ci = sol.y[6]
-    IL, INa, ICa, IK, ICl, IKCa = sol.y[8],sol.y[9],sol.y[10],sol.y[11],sol.y[12],sol.y[13]
-    J_mem, Jrel, Jserca, Jlk, Jexit = sol.y[14],sol.y[15],sol.y[16],sol.y[17],sol.y[18]
+    IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1 = sol.y[8],sol.y[9],sol.y[10],sol.y[11],sol.y[12],sol.y[13],sol.y[14],sol.y[15]
+    J_mem, Jrel, Jserca, Jlk, Jexit = sol.y[16],sol.y[17],sol.y[18],sol.y[19],sol.y[20]
     w = (sol.y[6]**p.n_KCa) / (sol.y[6]**p.n_KCa + p.Kd_KCa**p.n_KCa)
     current_dicts = {
         'IL': IL,
@@ -66,7 +66,9 @@ if __name__ == "__main__":
         'ICa': ICa,
         'IK': IK,
         'ICl': ICl,
-        'IKCa': IKCa
+        'IKCa': IKCa,
+        'I_TRPM4': I_TRPM4,
+        'I_ANO1': I_ANO1
     }
     
     caflux_dicts = {
