@@ -12,7 +12,7 @@ class Params:
     gK:  float = 1.1
     gCl: float = 0.0
 
-    # NEW: Ca-activated K, Na and Cl conductance (mS/cm^2)
+    # Ca-activated K, Na and Cl conductance (mS/cm^2)
     gKCa: float = 1.1  # tune this (0.05–2.0 is a reasonable sweep)
     gTRPM4 : float = 0.4    #models TRPM4 channels (typical range 0.05 - 0.4 mS/cm^2)
     gANO1 : float = 1.  #models ANO1 channels (0.2 - 1.5 mS/cm^2)
@@ -45,7 +45,7 @@ class Params:
     r_cm: float = 1e-3
     F: float = 9.6485e4
 
-    # NEW: KCa activation parameters (ci in mM)
+    # KCa activation parameters (ci in mM)
     Kd_KCa: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
     n_KCa: float = 2 # Hill coefficient (2–4 common)
 
@@ -129,7 +129,7 @@ def gate_rhs(x: float, Vm: float, gate_name: str, gate_approx: GateApprox) -> fl
 
 
 # -----------------------------
-# NEW: Ca-dependent activation (Hill)
+# Ca-dependent activation (Hill) of Kca, TRPM4, ANO1 channels
 # -----------------------------
 def w_kca(ci_mM: float, p: Params) -> float:
     ca_dep_conductances = [0.0,0.0,0.0]
@@ -159,7 +159,7 @@ def currents(Vm: float, m: float, h: float, n: float, s: float, r: float, ci: fl
     ICl = p.gCl * (r**p.q)     * (Vm - p.ECl)
     IL  = p.gL               * (Vm - p.EL)
 
-    # NEW: Ca-activated K current
+    # Ca-activated K current
     conductances = w_kca(ci, p)
     IKCa = p.gKCa * conductances[0] * (Vm - p.EK)
     I_TRPM4 = p.gTRPM4 * conductances[1] * (Vm - p.ETRPM4)
