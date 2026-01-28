@@ -98,14 +98,14 @@ class MainWindow(QMainWindow):
         self.gate_approx = DEFAULT_GATE_APPROX
 
         # Sim settings
-        self.t_end_ms = 30000
+        self.t_end_ms = 100000
         self.dt_ms = 1.0
 
         # Choose <= 5 Params attributes to expose
         # Format: (attr, label, min, max)
         self.slider_specs = [
-            ("Kd_KCa", "Kd_KCa", 1e-4, 5e-2),
-            ("n_KCa", "n_KCa", 1.0, 8.0),
+            ("Kd_KCa", "Kd_KCa",5e-3, 5e-2),
+            # ("n_KCa", "n_KCa", 1.0, 8.0),
             ("v_rel", "v_rel", 0.0, .10),
             ("v_serca", "v_serca", 0.0, .10),
             # ("cER_rest", "cER_rest", 1e-3, 5e-1),
@@ -165,18 +165,30 @@ class MainWindow(QMainWindow):
             setattr(self.p, attr, float(slider.value()))
 
     def initial_state(self):
+        # Vm0 = -65.0
+        # g = self.gate_approx
+        # m0 = sigmoid_x_inf(Vm0, g["m_ca"]["Vhalf"], g["m_ca"]["k"])
+        # h0 = sigmoid_x_inf(Vm0, g["h_ca"]["Vhalf"], g["h_ca"]["k"])
+        # n0 = sigmoid_x_inf(Vm0, g["m_k"]["Vhalf"], g["m_k"]["k"])
+        # s0 = sigmoid_x_inf(Vm0, g["m_Ca"]["Vhalf"], g["m_Ca"]["k"])
+        # # r0 = sigmoid_x_inf(Vm0, g["m_Cl"]["Vhalf"], g["m_Cl"]["k"])
+        # ci0 = 0.04
+
+        # cER0 = float(self.p.cER_rest)
+        # return np.array([Vm0, m0, h0, n0, s0, ci0, cER0,0., 0., 0., 0.,  0.,0.,0.,0.,0.,0.], dtype=float)
+
         Vm0 = -65.0
-        g = self.gate_approx
-        m0 = sigmoid_x_inf(Vm0, g["m_ca"]["Vhalf"], g["m_ca"]["k"])
-        h0 = sigmoid_x_inf(Vm0, g["h_ca"]["Vhalf"], g["h_ca"]["k"])
-        n0 = sigmoid_x_inf(Vm0, g["m_k"]["Vhalf"], g["m_k"]["k"])
-        s0 = sigmoid_x_inf(Vm0, g["m_Ca"]["Vhalf"], g["m_Ca"]["k"])
-        r0 = sigmoid_x_inf(Vm0, g["m_Cl"]["Vhalf"], g["m_Cl"]["k"])
-        ci0 = 0.04
+        m0 = sigmoid_x_inf(Vm0, self.gate_approx["m_ca"]["Vhalf"], self.gate_approx["m_ca"]["k"])
+        h0 = sigmoid_x_inf(Vm0, self.gate_approx["h_ca"]["Vhalf"], self.gate_approx["h_ca"]["k"])
+        n0 = sigmoid_x_inf(Vm0, self.gate_approx["m_k"]["Vhalf"], self.gate_approx["m_k"]["k"])
+        s0 = sigmoid_x_inf(Vm0, self.gate_approx["m_Ca"]["Vhalf"], self.gate_approx["m_Ca"]["k"])
+        # r0 = sigmoid_x_inf(Vm0, self.gate_approx["m_Cl"]["Vhalf"], self.gate_approx["m_Cl"]["k"])
+        ci0 = self.p.crest
 
-        cER0 = float(self.p.cER_rest)
-        return np.array([Vm0, m0, h0, n0, s0, r0, ci0, cER0,0., 0., 0., 0., 0., 0.,0.,0.,0.,0.,0.], dtype=float)
+        cER0 = self.p.cER_rest
+        y0 = np.array([Vm0, m0, h0, n0, s0, ci0, cER0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], dtype=float)
 
+        return y0
     def run_and_plot(self):
         self.run_btn.setEnabled(False)
         self.status.setText("Running simulation...")
@@ -207,14 +219,14 @@ class MainWindow(QMainWindow):
 
             t = sol.t * 1e-3  # seconds
             Vm = sol.y[0]
-            ci = sol.y[6]
+            ci = sol.y[5]
 
             # Plot
             self.canvas.ax_vm.clear()
             self.canvas.ax_ci.clear()
 
-            self.canvas.ax_vm.plot(t, Vm)
-            self.canvas.ax_ci.plot(t, ci)
+            self.canvas.ax_vm.plot(t, Vm,color="b")
+            self.canvas.ax_ci.plot(t, ci,color="r")
 
             self.canvas.ax_vm.set_ylabel("Vm (mV)")
             self.canvas.ax_ci.set_ylabel("ci (mM)")
