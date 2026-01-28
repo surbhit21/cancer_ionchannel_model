@@ -14,8 +14,8 @@ class Params:
 
     # Ca-activated K, Na and Cl conductance (mS/cm^2)
     gKCa: float = 1.1  # tune this (0.05–2.0 is a reasonable sweep)
-    gTRPM4 : float = 0.4    #models TRPM4 channels (typical range 0.05 - 0.4 mS/cm^2)
-    gANO1 : float = 1.  #models ANO1 channels (0.2 - 1.5 mS/cm^2)
+    gTRPM4 : float = 0.3    #models TRPM4 channels (typical range 0.05 - 0.4 mS/cm^2)
+    gANO1 : float = 1.0  #models ANO1 channels (0.2 - 1.5 mS/cm^2)
 
     # Leak (placeholder)
     gL: float = 0.02
@@ -33,7 +33,7 @@ class Params:
     q: int = 1
 
     # Membrane capacitance (µF/cm^2)
-    C: float = 3.2
+    C: float = 1.6
 
     # extenal input
     I_ext: float = 0.00
@@ -46,13 +46,13 @@ class Params:
     F: float = 9.6485e4
 
     # KCa activation parameters (ci in mM)
-    Kd_KCa: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
+    Kd_KCa: float = 5.0e-3  # mM (0.2 µM). Try 1e-4–1e-3
     n_KCa: float = 2 # Hill coefficient (2–4 common)
 
-    Kd_TRPM4: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
+    Kd_TRPM4: float = 2.0e-3  # mM (0.2 µM). Try 1e-4–1e-3
     n_TRPM4: float = 2 # Hill coefficient (2–4 common)   
 
-    Kd_ANO1: float = 1.0e-2  # mM (0.2 µM). Try 1e-4–1e-3
+    Kd_ANO1: float = 2.0e-3  # mM (0.2 µM). Try 1e-4–1e-3
     n_ANO1: float = 2 # Hill coefficient (2–4 common)
     
     
@@ -61,18 +61,18 @@ class Params:
     rho_er: float = 10.0      # V_ER / V_cyt volume ratio (typical 5–20)
     cER_rest: float = 0.05    # mM, resting store Ca (tune)
 
-    v_rel: float = 0.01   # mM/ms, max CICR release rate (tune)
+    v_rel: float = 0.01   # mM/s, max CICR release rate (tune)
     K_act: float = 1e-3       # mM, Ca activation for release (0.5 µM)
     n_act: float = 2.0        # Hill for activation
 
     # K_ER: float = 0.02         # mM, store-dependence (optional saturation)
     # n_ER: float = 2.0         # Hill for store dependence
 
-    v_serca: float = 2e-2     # mM/ms, max SERCA uptake (tune)
+    v_serca: float = 2e-2     # mM/s, max SERCA uptake (tune)
     K_serca: float = 3e-4     # mM, half-sat SERCA (~0.3 µM)
     n_serca: float = 2.0      # Hill SERCA
 
-    k_leak: float = 1e-3      # 1/ms, passive leak ER -> cyt (small)
+    k_leak: float = 1e-3      # 1/s, passive leak ER -> cyt (small)
     
     gate_sigma: float = 1e-4
     ca_sigma: float = 1e-5     
@@ -111,7 +111,7 @@ DEFAULT_GATE_APPROX: GateApprox = {
     "h_ca": {"Vhalf": -55.0, "k": -9.0, "tau_min": 1.0,  "tau_max": 16.0,  "Vtau": -55.0, "ktau": 15.0},
     "m_k": {"Vhalf": -30.0, "k": 12.0, "tau_min": 1.0,  "tau_max": 20.0,  "Vtau": -35.0, "ktau": 15.0},
     "m_Ca": {"Vhalf": -45.0, "k": 9.0,  "tau_min": 2.0,  "tau_max": 40.0, "Vtau": -30.0, "ktau": 15.0},
-    "m_Cl": {"Vhalf": -20.0, "k": 10.0,  "tau_min": 2.0,  "tau_max": 30.0, "Vtau": -25.0, "ktau": 15.0}
+    # "m_Cl": {"Vhalf": -20.0, "k": 10.0,  "tau_min": 2.0,  "tau_max": 30.0, "Vtau": -25.0, "ktau": 15.0}
 
 }
 
@@ -152,38 +152,38 @@ def w_kca(ci_mM: float, p: Params) -> float:
 # Currents + full ODE system
 # State y = [Vm, m, h, n, s, r, ci]
 # -----------------------------
-def currents(Vm: float, m: float, h: float, n: float, s: float, r: float, ci: float, p: Params) -> Tuple[float, float, float, float, float, float]:
+def currents(Vm: float, m: float, h: float, n: float, s: float,  ci: float, p: Params) -> Tuple[float, float, float, float, float, float]:
     INa = p.gNa * (m**3) * h * (Vm - p.ENa) 
     IK  = p.gK  * (n**4)       * (Vm - p.EK)
     ICa = p.gCa * (s**p.p)     * (Vm - p.ECa)
-    ICl = p.gCl * (r**p.q)     * (Vm - p.ECl)
+    # ICl = p.gCl * (r**p.q)     * (Vm - p.ECl)
     IL  = p.gL               * (Vm - p.EL)
 
     # Ca-activated K current
     conductances = w_kca(ci, p)
-    IKCa = p.gKCa * conductances[0] * (Vm - p.EK)
+    IKCa = p.gKCa * (n**4) * conductances[0] * (Vm - p.EK)
     I_TRPM4 = p.gTRPM4 * conductances[1] * (Vm - p.ETRPM4)
     I_ANO1 = p.gANO1 * conductances[2] * (Vm - p.ECl)
 
-    return IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1
+    return IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1
 
 def clamp01(x):
     return np.clip(x, 0.0, 1.0)
 
 def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
-    Vm, m, h, n, s, r, ci, cER = y[:8]
+    Vm, m, h, n, s, ci, cER = y[:7]
 
-    IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, r, ci, p)
+    IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, ci, p)
 
     # Membrane equation: C dVm/dt = -(sum currents)
-    dVm = p.dt * (-(IL + INa + ICa + IK + ICl + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
+    dVm = p.dt * (-(IL + INa + ICa + IK + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
 
     # Gating variables
     dm = p.dt * gate_rhs(m, Vm, "m_ca", gate_approx ) 
     dh = p.dt * gate_rhs(h, Vm, "h_ca", gate_approx)
     dn = p.dt * gate_rhs(n, Vm, "m_k", gate_approx)
     ds = p.dt * gate_rhs(s, Vm, "m_Ca", gate_approx)
-    dr = p.dt * gate_rhs(r, Vm, "m_Cl", gate_approx)
+    # dr = p.dt * gate_rhs(r, Vm, "m_Cl", gate_approx)
     
     if int(t_ms) == 3000:
         print("Vm", Vm, "ICa", ICa, "ci", ci, "wKCa", w_kca(ci, p))
@@ -203,19 +203,19 @@ def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -
     # store Ca: opposite sign, scaled by volume ratio (conservation across compartments)
     dcER = p.dt * ((p.rho_er) * (Jserca - (Jrel + Jlk)))
    
-    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER,IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1,J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds, dci, dcER,IL, INa, ICa, IK,  IKCa, I_TRPM4, I_ANO1,J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
 def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
-    Vm, m, h, n, s, r, ci, cER = y
+    Vm, m, h, n, s, ci, cER = y
 
-    IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, r, ci, p)
-    dVm = (-(IL + INa + ICa + IK + ICl + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
+    IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, ci, p)
+    dVm = (-(IL + INa + ICa + IK + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
 
     dm =  gate_rhs(m, Vm, "m_ca", gate_approx ) 
     dh = gate_rhs(h, Vm, "h_ca", gate_approx)
     dn = gate_rhs(n, Vm, "m_k", gate_approx)
     ds = gate_rhs(s, Vm, "m_Ca", gate_approx)
-    dr = gate_rhs(r, Vm, "m_Cl", gate_approx)
+    # dr = gate_rhs(r, Vm, "m_Cl", gate_approx)
 
     J_mem = -(p.f * 3.0 * ICa) / (2000.0 * p.r_cm * p.F)
     Jrel   = J_release(ci, cER, p)
@@ -225,7 +225,7 @@ def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateAp
     dci  = (J_mem + (Jrel + Jlk) - Jserca - Jexit)
     dcER = ((p.rho_er) * (Jserca - (Jrel + Jlk)))
 
-    return np.array([dVm, dm, dh, dn, ds, dr, dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, ICl, IKCa, I_TRPM4, I_ANO1], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds,  dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
 def simulate_sde_euler_maruyama(
     y0: np.ndarray,

@@ -104,6 +104,7 @@ def plot_gating_variables(
     ylabels: np.ndarray = ["Current (nA)"],
     savepath: Optional[Path] = None,
     labs: dict[str, str] = {},
+    t_labs: dict[str, str] = {},
     show: bool = True,
     dpi: int = 300,
 ) -> None:
@@ -113,7 +114,7 @@ def plot_gating_variables(
     fig, ax = plt.subplots(figsize=(16,6),ncols=2)
     for name, trace in currents.items():
         ax[0].plot(v_ms, trace[0], label=labs[name] if name in labs else name)
-        ax[1].plot(v_ms, trace[1], label=labs[name] if name in labs else name)
+        ax[1].plot(v_ms, trace[1], label=t_labs[name] if name in t_labs else name)
     ax[0].set_xlabel("Voltage (mV)")
     ax[0].set_ylabel(ylabels[0])
     ax[1].set_xlabel("Voltage (mV)")
