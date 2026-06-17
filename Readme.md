@@ -1,117 +1,185 @@
-This is a repository for exploring a Hodgkin–Huxley–type model with calcium dynamics and a calcium-activated potassium (KCa) current to study voltage fluctuations in cancer cells. 
+# Cancer Ion Channel Model
+
+This repository explores a Hodgkin-Huxley-type ion-channel model for cancer cell electrophysiology. The model couples membrane voltage dynamics, voltage-gated channel gating, cytosolic calcium, ER calcium release/leak, SERCA uptake, and calcium-activated KCa/TRPM4/ANO1 conductances.
+
+The codebase now has three user-facing entry points:
+
+- Deterministic and stochastic simulation scripts in `src/model`
+- A PyQt desktop GUI in `src/gui`
+- A FastAPI browser app in `src/web`
 
 ## Features
 
--  Hodgkin–Huxley gating + calcium dynamics
-- Uses `solve_ivp` with configurable tolerances
-- Clean separation between model code (`src/model`), desktop GUI code (`src/gui`), and web app code (`src/web`)
-
+- Hodgkin-Huxley-type gating and membrane voltage dynamics
+- Cytosolic and ER calcium dynamics
+- Calcium-dependent KCa, TRPM4, and ANO1 conductances
+- Deterministic ODE integration with `scipy.integrate.solve_ivp`
+- Stochastic Euler-Maruyama simulation
+- Plot generation with Matplotlib
+- Desktop parameter tuning with PyQt5
+- Browser-based parameter tuning with FastAPI
+- Pytest model and API smoke tests
+- GitHub Actions CI for push and pull request checks
 
 ## Repository Structure
 
 ```text
 .
-├── README.md              # This file
+├── .github
+│   └── workflows
+│       └── ci.yml                 # GitHub Actions test workflow
 ├── src
 │   ├── gui
 │   │   ├── __init__.py
-│   │   └── GUI_HH.py      # GUI for parameter tuning
+│   │   └── GUI_HH.py              # PyQt desktop GUI
 │   ├── model
 │   │   ├── __init__.py
-│   │   ├── HHType_model.py              # Deterministic ODE integration
-│   │   ├── Plotting.py                  # Plotting helpers
-│   │   ├── stochasticHHType_model.py    # Stochastic SDE integration
-│   │   └── Utilities.py                 # Params, ODEs, gating functions
-│   ├── web
-│   │   ├── __init__.py
-│   │   └── app.py        # FastAPI browser app
-│   └── tests
-│       └── Utests.py
-├── plots                  # to save plots
-├── LICENSE                # License file
+│   │   ├── HHType_model.py        # Deterministic ODE script
+│   │   ├── Plotting.py            # Plotting helpers
+│   │   ├── stochasticHHType_model.py
+│   │   └── Utilities.py           # Params, currents, ODE/SDE helpers
+│   ├── tests
+│   │   ├── Utests.py              # Legacy smoke tests
+│   │   ├── test_model.py          # Pytest model tests
+│   │   └── test_web.py            # Pytest FastAPI tests
+│   └── web
+│       ├── __init__.py
+│       └── app.py                 # FastAPI browser app
+├── LICENSE
+├── Readme.md
 └── requirements.txt
-
-
 ```
 
-To generate plots
+Generated plots are written to `plots/` by the model scripts.
 
-## 1. clone the repository:
+## Setup
 
-``` 
+Clone the repository:
+
+```bash
 git clone https://github.com/surbhit21/cancer_ionchannel_model.git
+cd cancer_ionchannel_model
 ```
 
-## 2. (Recommended) Create a virtual environment
+Create and activate a virtual environment:
 
-```
+```bash
 python -m venv venv
-source venv/bin/activate      # Linux / macOS
-venv\Scripts\activate         # Windows
+source venv/bin/activate
 ```
 
-## 3. Install dependencies
+On Windows:
 
+```bat
+venv\Scripts\activate
 ```
+
+Install dependencies:
+
+```bash
 pip install -r requirements.txt
 ```
 
-## 4. Run the ODE integrator:
+## Run Simulations
 
-```
+Run the deterministic ODE simulation and generate plots:
+
+```bash
 python src/model/HHType_model.py
 ```
 
-To run the GUI:
+Run the stochastic Euler-Maruyama simulation:
 
+```bash
+python src/model/stochasticHHType_model.py
 ```
+
+## Desktop GUI
+
+Launch the PyQt parameter tuner:
+
+```bash
 python src/gui/GUI_HH.py
 ```
 
-To run the web app:
+The GUI reruns the ODE model and plots:
 
-```
-uvicorn src.web.app:app --reload
-```
+- Membrane voltage, `V_m`
+- Cytosolic calcium, `c_i`
 
-Then open `http://127.0.0.1:8000` in a browser.
+The current GUI exposes these parameters in `src/gui/GUI_HH.py`:
 
-
-## 5. GUI for parameter tuning
-
-This repository also provides an interactive **PyQt-based graphical user interface (GUI)** for exploring a Hodgkin–Huxley–type neuron model with calcium dynamics and a calcium-activated potassium (KCa) current.
-
-The GUI allows you to **adjust up to 5 model parameters using sliders**, re-run the numerical integration, and immediately visualise:
-- Membrane voltage (`V_m`)
-- Cytosolic calcium concentration (`c_i`)
-
-Plots are embedded using Matplotlib, and the system of ODEs is solved using `scipy.integrate.solve_ivp`.
-
-### GUI Features
----
-
-- PyQt5 GUI with embedded Matplotlib plots
-- Up to **5 tunable parameters** exposed as sliders
-- Explicit **Run / Update** button (no recomputation while dragging sliders)
-
----
-### Adjusting Model Parameters
-
-The parameters exposed in the GUI are defined in `src/gui/GUI_HH.py`: 
-```
+```python
 self.slider_specs = [
-     ("Kd_KCa", "Kd_KCa", 1e-4, 5e-2),
-      ("n_KCa", "n_KCa", 1.0, 8.0),
-      ("v_rel", "v_rel", 0.0, 0.1),
-      ("v_serca", "v_serca", 0.0, 0.10),
+    ("Kd_KCa", "Kd_KCa", 5e-3, 5e-2),
+    ("v_rel", "v_rel", 0.0, 0.10),
+    ("v_serca", "v_serca", 0.0, 0.10),
 ]
 ```
 
-## 6. Web app for browser-based parameter tuning
+## Web App
 
-The FastAPI app in `src/web/app.py` provides:
+Launch the FastAPI web app:
 
-- A browser interface with sliders for `Kd_KCa`, `v_rel`, and `v_serca`
-- A `/api/simulate` JSON endpoint that runs the ODE model
-- Canvas plots for membrane voltage (`V_m`) and cytosolic calcium (`c_i`)
-- Automatic OpenAPI documentation at `http://127.0.0.1:8000/docs`
+```bash
+uvicorn src.web.app:app --reload
+```
+
+Open:
+
+```text
+http://127.0.0.1:8000
+```
+
+The web app provides:
+
+- Browser sliders for `Kd_KCa`, `v_rel`, and `v_serca`
+- A `/api/simulate` JSON endpoint
+- Canvas plots for `V_m` and `c_i`
+- Interactive API docs at `http://127.0.0.1:8000/docs`
+
+Example API request:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/simulate \
+  -H "Content-Type: application/json" \
+  -d '{"Kd_KCa": 0.0003, "v_rel": 0.01, "v_serca": 0.02, "t_end_ms": 1000, "dt_ms": 20}'
+```
+
+## Tests
+
+Run the pytest suite:
+
+```bash
+python -m pytest -q
+```
+
+The tests cover:
+
+- 7-variable model state validity
+- ODE RHS shape and finite values
+- Short deterministic integration
+- Diagnostic current/flux traces
+- Calcium-dependent activation bounds
+- SDE reproducibility with fixed seed
+- FastAPI UI and `/api/simulate` endpoint smoke tests
+
+## Continuous Integration
+
+GitHub Actions is configured in `.github/workflows/ci.yml`.
+
+On every push and pull request, CI:
+
+- sets up Python 3.11
+- installs `requirements.txt`
+- runs `python -m pytest -q`
+
+## Notes
+
+The current integrated model state is:
+
+```text
+[Vm, m, h, n, s, ci, cER]
+```
+
+Currents and calcium fluxes are computed separately as diagnostics rather than being integrated as state variables.
