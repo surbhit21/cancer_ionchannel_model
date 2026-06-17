@@ -4,24 +4,32 @@ This is a repository for exploring a Hodgkin–Huxley–type model with calcium 
 
 -  Hodgkin–Huxley gating + calcium dynamics
 - Uses `solve_ivp` with configurable tolerances
-- Clean separation between model (`Utilities.py`), execution (`HHType_model.py` and `stochasticHHType_model.py`) and GUI (`GUI_HH.py`)
+- Clean separation between model code (`src/model`), desktop GUI code (`src/gui`), and web app code (`src/web`)
 
 
 ## Repository Structure
 
 ```text
 .
-├── Utilities.py           # Model definitions (Params, ODEs, gating functions)
 ├── README.md              # This file
 ├── src
-    ├── GUI_HH.py          # GUI file to for parameter tuning
-    ├── HHType_model.py    # This file
-    ├── Plotting.py        # function to plot 
-    ├── stochasticHHType_model.py    # Integration of SDEs
-    ├── Utilities.py      # Parameter definition and helper functions
-├── plots                 # to save plots
+│   ├── gui
+│   │   ├── __init__.py
+│   │   └── GUI_HH.py      # GUI for parameter tuning
+│   ├── model
+│   │   ├── __init__.py
+│   │   ├── HHType_model.py              # Deterministic ODE integration
+│   │   ├── Plotting.py                  # Plotting helpers
+│   │   ├── stochasticHHType_model.py    # Stochastic SDE integration
+│   │   └── Utilities.py                 # Params, ODEs, gating functions
+│   ├── web
+│   │   ├── __init__.py
+│   │   └── app.py        # FastAPI browser app
+│   └── tests
+│       └── Utests.py
+├── plots                  # to save plots
 ├── LICENSE                # License file
-└── requirements.txt                 # to save plots
+└── requirements.txt
 
 
 ```
@@ -51,8 +59,22 @@ pip install -r requirements.txt
 ## 4. Run the ODE integrator:
 
 ```
-python HHType_model.py 
+python src/model/HHType_model.py
 ```
+
+To run the GUI:
+
+```
+python src/gui/GUI_HH.py
+```
+
+To run the web app:
+
+```
+uvicorn src.web.app:app --reload
+```
+
+Then open `http://127.0.0.1:8000` in a browser.
 
 
 ## 5. GUI for parameter tuning
@@ -75,7 +97,7 @@ Plots are embedded using Matplotlib, and the system of ODEs is solved using `sci
 ---
 ### Adjusting Model Parameters
 
-The parameters exposed in the GUI are defined in `GUI_HH.py`: 
+The parameters exposed in the GUI are defined in `src/gui/GUI_HH.py`: 
 ```
 self.slider_specs = [
      ("Kd_KCa", "Kd_KCa", 1e-4, 5e-2),
@@ -84,3 +106,12 @@ self.slider_specs = [
       ("v_serca", "v_serca", 0.0, 0.10),
 ]
 ```
+
+## 6. Web app for browser-based parameter tuning
+
+The FastAPI app in `src/web/app.py` provides:
+
+- A browser interface with sliders for `Kd_KCa`, `v_rel`, and `v_serca`
+- A `/api/simulate` JSON endpoint that runs the ODE model
+- Canvas plots for membrane voltage (`V_m`) and cytosolic calcium (`c_i`)
+- Automatic OpenAPI documentation at `http://127.0.0.1:8000/docs`

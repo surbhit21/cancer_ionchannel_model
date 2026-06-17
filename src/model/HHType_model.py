@@ -2,10 +2,15 @@
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-import Plotting as cplot
+import sys
+
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from model import Plotting as cplot
 from scipy.integrate import solve_ivp
-from Utilities import *
-from Plotting import ensure_dir_exists
+from model.Utilities import *
+from model.Plotting import ensure_dir_exists
 if __name__ == "__main__":
     p = Params()
     gate_approx = DEFAULT_GATE_APPROX
@@ -15,11 +20,10 @@ if __name__ == "__main__":
     h0 = sigmoid_x_inf(Vm0, gate_approx["h_ca"]["Vhalf"], gate_approx["h_ca"]["k"])
     n0 = sigmoid_x_inf(Vm0, gate_approx["m_k"]["Vhalf"], gate_approx["m_k"]["k"])
     s0 = sigmoid_x_inf(Vm0, gate_approx["m_Ca"]["Vhalf"], gate_approx["m_Ca"]["k"])
-    # r0 = sigmoid_x_inf(Vm0, gate_approx["m_Cl"]["Vhalf"], gate_approx["m_Cl"]["k"])
     ci0 = p.crest
     
     cER0 = p.cER_rest
-    y0 = np.array([Vm0, m0, h0, n0, s0, ci0, cER0, 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.], dtype=float)
+    y0 = np.array([Vm0, m0, h0, n0, s0, ci0, cER0], dtype=float)
 
 
     ensure_dir_exists('./plots/')
@@ -30,14 +34,12 @@ if __name__ == "__main__":
         'h_ca': r'$h_{Ca,\infty}$',
         'm_k': r'$m_{K,\infty}$',
         'm_Ca': r'$m_{Ca,\infty}$',
-        # 'm_Cl': r'$m_{Cl,\infty}$'
     }
     t_labs = {
         'm_ca': r'$\tau_{Ca,\infty}$',
         'h_ca': r'$\tau_{Ca,\infty}$',
         'm_k': r'$\tau_{K,\infty}$',
         'm_Ca': r'$\tau_{Ca,\infty}$',
-        # 'm_Cl': r'$\tau_{Cl,\infty}$'
     }
     
     t_end = 100000  # ms
@@ -58,21 +60,20 @@ if __name__ == "__main__":
         'h_ca': sol.y[2],
         'm_k': sol.y[3],
         'm_Ca': sol.y[4],
-        # 'm_Cl': sol.y[5]
     }
 
-    ts = sol.t*p.dt
+    ts = sol.t
     Vm = sol.y[0]
     ci = sol.y[5]
-    IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1 = sol.y[7],sol.y[8],sol.y[9],sol.y[10],sol.y[11],sol.y[12],sol.y[13]
-    J_mem, Jrel, Jserca, Jlk, Jexit = sol.y[14],sol.y[15],sol.y[16],sol.y[17],sol.y[18]
-    w = (sol.y[5]**p.n_KCa) / (sol.y[5]**p.n_KCa + p.Kd_KCa**p.n_KCa)
+    Currs, cafluxes = trace_diagnostics(sol.t, sol.y, p, gate_approx)
+    IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1 = Currs
+    J_mem, Jrel, Jserca, Jlk, Jexit = cafluxes
+    w = (ci**p.n_KCa) / (ci**p.n_KCa + p.Kd_KCa**p.n_KCa)
     current_dicts = {
         'IL': IL,
         'INa': INa,
         'ICa': ICa,
         'IK': IK,
-        # 'ICl': ICl,
         'IKCa': IKCa,
         'I_TRPM4': I_TRPM4,
         'I_ANO1': I_ANO1
@@ -90,8 +91,6 @@ if __name__ == "__main__":
     cplot.plot_currents(ts,gating_dicts,ylabel = "gating value",labs=labs,show=True, dpi=300, savepath=Path('./plots/HHType_gate_timeline_with_KCa.png'))
     # cplot.plot_currents(ts,gating_dicts,ylabel = "Time constants (ms)",labs=labs,show=True, dpi=300, savepath=Path('./plots/HHType_gate_timeconstant_with_KCa.png'))
     
-    # breakpoint()
-    # breakpoint()
     print("Integration success:", sol.success)
     print("Initial Vm (mV):", sol.y[0, 0])
     print("Initial ci (mM):", sol.y[5, 0])
@@ -128,7 +127,7 @@ if __name__ == "__main__":
         t_ms=ts,
         currents=caflux_dicts,
         ylabel=r"Calcium Flux $(\mu M/ms)$",
-        savepath=Path('./plots/HHType_currents_with_KCa.png'),
+        savepath=Path('./plots/HHType_cafluxes_with_KCa.png'),
         show=True,
         dpi=300,
     )
@@ -142,4 +141,3 @@ if __name__ == "__main__":
         dpi=300,
     )
     
-    breakpoint()

@@ -1,6 +1,5 @@
 from dataclasses import dataclass
 import numpy as np
-from scipy.integrate import solve_ivp
 from typing import Dict, Tuple
 
 @dataclass
@@ -13,7 +12,7 @@ class Params:
     gCl: float = 0.0
 
     # Ca-activated K, Na and Cl conductance (mS/cm^2)
-    gKCa: float = 1.1  # tune this (0.05–2.0 is a reasonable sweep)
+    gKCa: float = 0.25  # tune this (0.05–2.0 is a reasonable sweep)
     gTRPM4 : float = 0.3    #models TRPM4 channels (typical range 0.05 - 0.4 mS/cm^2)
     gANO1 : float = 1.0  #models ANO1 channels (0.2 - 1.5 mS/cm^2)
 
@@ -46,14 +45,14 @@ class Params:
     F: float = 9.6485e4
 
     # KCa activation parameters (ci in mM)
-    Kd_KCa: float = 5.0e-3  # mM (0.2 µM). Try 1e-4–1e-3
+    Kd_KCa: float = 3.0e-4 # mM (0.2 µM). Try 1e-4–1e-3
     n_KCa: float = 2 # Hill coefficient (2–4 common)
 
     Kd_TRPM4: float = 2.0e-3  # mM (0.2 µM). Try 1e-4–1e-3
     n_TRPM4: float = 2 # Hill coefficient (2–4 common)   
 
     Kd_ANO1: float = 2.0e-3  # mM (0.2 µM). Try 1e-4–1e-3
-    n_ANO1: float = 2 # Hill coefficient (2–4 common)
+    n_ANO1: float = 2. # Hill coefficient (2–4 common)
     
     
     # parameters for the CICR and SERCA pumps 
@@ -111,8 +110,6 @@ DEFAULT_GATE_APPROX: GateApprox = {
     "h_ca": {"Vhalf": -55.0, "k": -9.0, "tau_min": 1.0,  "tau_max": 16.0,  "Vtau": -55.0, "ktau": 15.0},
     "m_k": {"Vhalf": -30.0, "k": 12.0, "tau_min": 1.0,  "tau_max": 20.0,  "Vtau": -35.0, "ktau": 15.0},
     "m_Ca": {"Vhalf": -45.0, "k": 9.0,  "tau_min": 2.0,  "tau_max": 40.0, "Vtau": -30.0, "ktau": 15.0},
-    # "m_Cl": {"Vhalf": -20.0, "k": 10.0,  "tau_min": 2.0,  "tau_max": 30.0, "Vtau": -25.0, "ktau": 15.0}
-
 }
 
 
@@ -150,9 +147,9 @@ def w_kca(ci_mM: float, p: Params) -> float:
 
 # -----------------------------
 # Currents + full ODE system
-# State y = [Vm, m, h, n, s, r, ci]
+# State y = [Vm, m, h, n, s, ci, cER]
 # -----------------------------
-def currents(Vm: float, m: float, h: float, n: float, s: float,  ci: float, p: Params) -> Tuple[float, float, float, float, float, float]:
+def currents(Vm: float, m: float, h: float, n: float, s: float,  ci: float, p: Params) -> Tuple[float, float, float, float, float, float, float]:
     INa = p.gNa * (m**3) * h * (Vm - p.ENa) 
     IK  = p.gK  * (n**4)       * (Vm - p.EK)
     ICa = p.gCa * (s**p.p)     * (Vm - p.ECa)
@@ -171,22 +168,22 @@ def clamp01(x):
     return np.clip(x, 0.0, 1.0)
 
 def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
-    Vm, m, h, n, s, ci, cER = y[:7]
+    dy, _, _ = ode_deterministic(t_ms, y, p, gate_approx)
+    return dy
+
+def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    Vm, m, h, n, s, ci, cER = y
 
     IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, ci, p)
 
     # Membrane equation: C dVm/dt = -(sum currents)
-    dVm = p.dt * (-(IL + INa + ICa + IK + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
+    dVm = (-(IL + INa + ICa + IK + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
 
     # Gating variables
-    dm = p.dt * gate_rhs(m, Vm, "m_ca", gate_approx ) 
-    dh = p.dt * gate_rhs(h, Vm, "h_ca", gate_approx)
-    dn = p.dt * gate_rhs(n, Vm, "m_k", gate_approx)
-    ds = p.dt * gate_rhs(s, Vm, "m_Ca", gate_approx)
-    # dr = p.dt * gate_rhs(r, Vm, "m_Cl", gate_approx)
-    
-    if int(t_ms) == 3000:
-        print("Vm", Vm, "ICa", ICa, "ci", ci, "wKCa", w_kca(ci, p))
+    dm = gate_rhs(m, Vm, "m_ca", gate_approx ) 
+    dh = gate_rhs(h, Vm, "h_ca", gate_approx)
+    dn = gate_rhs(n, Vm, "m_k", gate_approx)
+    ds = gate_rhs(s, Vm, "m_Ca", gate_approx)
 
     # membrane -> cytosol influx (your original term)
     J_mem = -(p.f * 3.0 * ICa) / (2000.0 * p.r_cm * p.F)  # mM/ms
@@ -198,34 +195,26 @@ def ode_system(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -
     Jexit = p.gamma * (ci - p.crest)
 
     # cytosol Ca: influx + (ER->cyt) - (cyt->ER) + leak, plus your extrusion to baseline
-    dci = p.dt * (J_mem + (Jrel + Jlk) - Jserca - Jexit)
+    dci = J_mem + (Jrel + Jlk) - Jserca - Jexit
 
     # store Ca: opposite sign, scaled by volume ratio (conservation across compartments)
-    dcER = p.dt * ((p.rho_er) * (Jserca - (Jrel + Jlk)))
+    dcER = p.rho_er * (Jserca - (Jrel + Jlk))
    
-    return np.array([dVm, dm, dh, dn, ds, dci, dcER,IL, INa, ICa, IK,  IKCa, I_TRPM4, I_ANO1,J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
+    return np.array([dVm, dm, dh, dn, ds, dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
 
-def ode_deterministic(t_ms: float, y: np.ndarray, p: Params, gate_approx: GateApprox) -> np.ndarray:
-    Vm, m, h, n, s, ci, cER = y
-
-    IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1 = currents(Vm, m, h, n, s, ci, p)
-    dVm = (-(IL + INa + ICa + IK + IKCa + I_TRPM4 + I_ANO1) + p.I_ext) / p.C
-
-    dm =  gate_rhs(m, Vm, "m_ca", gate_approx ) 
-    dh = gate_rhs(h, Vm, "h_ca", gate_approx)
-    dn = gate_rhs(n, Vm, "m_k", gate_approx)
-    ds = gate_rhs(s, Vm, "m_Ca", gate_approx)
-    # dr = gate_rhs(r, Vm, "m_Cl", gate_approx)
-
-    J_mem = -(p.f * 3.0 * ICa) / (2000.0 * p.r_cm * p.F)
-    Jrel   = J_release(ci, cER, p)
-    Jserca = J_serca(ci, p)
-    Jlk    = J_leak(ci, cER, p)
-    Jexit = p.gamma * (ci - p.crest)
-    dci  = (J_mem + (Jrel + Jlk) - Jserca - Jexit)
-    dcER = ((p.rho_er) * (Jserca - (Jrel + Jlk)))
-
-    return np.array([dVm, dm, dh, dn, ds,  dci, dcER], dtype=float),np.array([IL, INa, ICa, IK, IKCa, I_TRPM4, I_ANO1], dtype=float),np.array([J_mem,Jrel,Jserca,Jlk,Jexit], dtype=float)
+def trace_diagnostics(
+    t_ms: np.ndarray,
+    y: np.ndarray,
+    p: Params,
+    gate_approx: GateApprox,
+) -> Tuple[np.ndarray, np.ndarray]:
+    currents_trace = np.zeros((7, y.shape[1]), dtype=float)
+    ca_fluxes_trace = np.zeros((5, y.shape[1]), dtype=float)
+    for k, tk in enumerate(t_ms):
+        _, currents_k, ca_fluxes_k = ode_deterministic(tk, y[:, k], p, gate_approx)
+        currents_trace[:, k] = currents_k
+        ca_fluxes_trace[:, k] = ca_fluxes_k
+    return currents_trace, ca_fluxes_trace
 
 def simulate_sde_euler_maruyama(
     y0: np.ndarray,
@@ -240,7 +229,7 @@ def simulate_sde_euler_maruyama(
 
     t = np.linspace(t0, t0 + p.dt*(n_steps-1), n_steps)
     Y = np.zeros((len(y0), n_steps), dtype=float)
-    Currs = np.zeros((6, n_steps), dtype=float)  # to store currents if needed
+    Currs = np.zeros((7, n_steps), dtype=float)  # to store currents if needed
     ca_fluxes = np.zeros((5, n_steps), dtype=float)  # to store ca fluxes if needed
     Y[:, 0] = y0
 
@@ -249,25 +238,26 @@ def simulate_sde_euler_maruyama(
     for k in range(n_steps - 1):
         y = Y[:, k]
         dy,Currs[:, k],ca_fluxes[:,k] = ode_deterministic(t[k], y, p, gate_approx)
-        # additive noise only on gates (m,h,n,s,r) = indices 1..5
-        dW = rng.standard_normal(5)  # N(0,1)
+        # additive noise only on gates (m,h,n,s) = indices 1..4
+        dW = rng.standard_normal(4)  # N(0,1)
         dW_store = rng.standard_normal()
         eta = sqrt_dt * dW_store
-        dy[1:6] += p.gate_sigma * (dW / sqrt_dt)  # convert to "derivative" form? (see note below)
-        # Euler update with proper SDE scaling:
+
         y_next = y + dy * p.dt
-        y_next[1:6] += p.gate_sigma * sqrt_dt * dW  # correct EM increment
-        y_next[6] += p.ca_sigma * eta  # correct EM increment for ca in cytosol
-        y_next[7] -= (p.rho_er) * p.ca_sigma * eta # correct EM increment for ca in ER
+        y_next[1:5] += p.gate_sigma * sqrt_dt * dW
+        y_next[5] += p.ca_sigma * eta
+        y_next[6] -= p.rho_er * p.ca_sigma * eta
         
         # clamp gating variables to [0,1]
-        y_next[1:6] = np.clip(y_next[1:6], 0.0, 1.0)
+        y_next[1:5] = np.clip(y_next[1:5], 0.0, 1.0)
 
         # (optional) prevent negative Ca
+        y_next[5] = max(y_next[5], 0.0)
         y_next[6] = max(y_next[6], 0.0)
-        y_next[7] = max(y_next[7], 0.0)
 
         Y[:, k+1] = y_next
+
+    _, Currs[:, -1], ca_fluxes[:, -1] = ode_deterministic(t[-1], Y[:, -1], p, gate_approx)
 
     return t, Y, Currs, ca_fluxes
 
